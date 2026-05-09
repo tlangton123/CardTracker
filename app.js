@@ -37,17 +37,18 @@ async function loadAll() {
 }
 
 // ─────────────────────────────────────────────
-//  TABS  (mobile)
+//  TABS
 // ─────────────────────────────────────────────
 function initTabs() {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
+  document.querySelectorAll('.main-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.main-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const target = btn.dataset.target;
       document.querySelectorAll('.pane').forEach(p => {
         p.classList.toggle('pane--active', p.id === target);
       });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
 }
