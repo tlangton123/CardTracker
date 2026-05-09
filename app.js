@@ -1,7 +1,6 @@
 'use strict';
 
-const TCG_API   = 'https://api.pokemontcg.io/v2/sets';
-const RSS2JSON  = 'https://api.rss2json.com/v1/api.json';
+const TCG_API = 'https://api.pokemontcg.io/v2/sets';
 
 let countdownTimers = {};
 
@@ -33,8 +32,8 @@ function init() {
 async function loadAll() {
   await Promise.allSettled([
     loadPokemonSets(),
-    loadNewsFeeds('pokemon-news', RSS_SOURCES.pokemon),
-    loadNewsFeeds('sports-news',  RSS_SOURCES.sports),
+    loadNewsFeeds('pokemon-news', NEWS_SOURCES.pokemon),
+    loadNewsFeeds('sports-news',  NEWS_SOURCES.sports),
   ]);
   setLastUpdated();
 }
@@ -223,35 +222,36 @@ function buildSportsCard(drop, isFeatured = false) {
 }
 
 // ─────────────────────────────────────────────
-//  RSS NEWS FEEDS
+//  NEWS FEEDS  (Reddit public JSON API)
 // ─────────────────────────────────────────────
 async function loadNewsFeeds(containerId, sources) {
   const el = document.getElementById(containerId);
   el.innerHTML = skeletons(3, containerId.includes('pokemon') ? 'pokemon' : 'sports');
 
   const results = await Promise.allSettled(
-    sources.map(({ url }) =>
-      fetch(`${RSS2JSON}?rss_url=${encodeURIComponent(url)}&count=8`)
+    sources.map(({ url, label }) =>
+      fetch(url, { headers: { 'Accept': 'application/json' } })
         .then(r => r.ok ? r.json() : null)
+        .then(json => redditToItems(json, label))
     )
   );
 
   const seen  = new Set();
   let   items = [];
 
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled' && r.value?.status === 'ok') {
-      (r.value.items || []).forEach(item => {
+  results.forEach(r => {
+    if (r.status === 'fulfilled' && r.value) {
+      r.value.forEach(item => {
         if (!seen.has(item.title)) {
           seen.add(item.title);
-          items.push({ ...item, _source: sources[i].label });
+          items.push(item);
         }
       });
     }
   });
 
   if (!items.length) {
-    el.innerHTML = errorState('Could not load news feed.');
+    el.innerHTML = errorState('Could not load news feed. Check your connection.');
     return;
   }
 
@@ -265,6 +265,19 @@ async function loadNewsFeeds(containerId, sources) {
     card.style.animationDelay = `${i * 30}ms`;
     el.appendChild(card);
   });
+}
+
+function redditToItems(json, label) {
+  if (!json?.data?.children) return [];
+  return json.data.children
+    .filter(c => c.kind === 't3' && !c.data.stickied)
+    .map(({ data: d }) => ({
+      title:       d.title,
+      link:        `https://www.reddit.com${d.permalink}`,
+      pubDate:     new Date(d.created_utc * 1000).toISOString(),
+      description: d.selftext || '',
+      _source:     label,
+    }));
 }
 
 function buildNewsCard(item) {

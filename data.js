@@ -234,15 +234,17 @@ const SPORTS_CURATED_DROPS = [
 ];
 
 // ─────────────────────────────────────────────
-//  RSS FEED SOURCES
+//  NEWS SOURCES  (Reddit public JSON API)
+//  No API key required — works from any domain.
 // ─────────────────────────────────────────────
-const RSS_SOURCES = {
+const NEWS_SOURCES = {
   pokemon: [
-    { url: 'https://www.pokebeach.com/feed',   label: 'PokeBeach'   },
-    { url: 'https://pokejungle.net/feed/',     label: 'PokéJungle'  },
+    { url: 'https://www.reddit.com/r/PokemonTCG/new.json?limit=8',         label: 'r/PokemonTCG'        },
+    { url: 'https://www.reddit.com/r/pokemoncardmarket/new.json?limit=6',   label: 'r/pokemoncardmarket' },
   ],
   sports: [
-    { url: 'https://www.cardboardconnection.com/feed', label: 'Cardboard Connection' },
-    { url: 'https://www.beckett.com/feed/',            label: 'Beckett'              },
+    { url: 'https://www.reddit.com/r/sportscards/new.json?limit=6',        label: 'r/sportscards'       },
+    { url: 'https://www.reddit.com/r/baseballcards/new.json?limit=4',      label: 'r/baseballcards'     },
+    { url: 'https://www.reddit.com/r/basketballcards/new.json?limit=4',    label: 'r/basketballcards'   },
   ],
 };
