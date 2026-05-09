@@ -49,6 +49,20 @@ export default {
         return serveCached(env, 'news-sports', () => fetchAllNews('sports'));
       case '/api/health':
         return jsonOk({ status: 'ok', ts: new Date().toISOString() });
+      case '/api/debug/feeds': {
+        const tests = await Promise.all(
+          [...NEWS_SOURCES.pokemon, ...NEWS_SOURCES.sports].map(async ({ url, label }) => {
+            try {
+              const r = await fetch(url, { headers: { 'User-Agent': 'CardTrackerBot/1.0' } });
+              const text = await r.text();
+              return { label, url, status: r.status, bytes: text.length, preview: text.slice(0, 200) };
+            } catch (e) {
+              return { label, url, status: 'error', error: e.message };
+            }
+          })
+        );
+        return jsonOk(tests);
+      }
       default:
         return new Response('Not found', { status: 404, headers: CORS_HEADERS });
     }
