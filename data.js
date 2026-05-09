@@ -234,20 +234,19 @@ const SPORTS_CURATED_DROPS = [
 ];
 
 // ─────────────────────────────────────────────
-//  NEWS SOURCES
-//  type:'reddit' → fetched via allorigins proxy, parsed as JSON
-//  type:'rss'    → fetched via allorigins proxy, parsed as XML
+//  NEWS SOURCES  — Reddit RSS feeds + hobby news
+//  Reddit .rss endpoints use Atom format (parsed automatically)
 // ─────────────────────────────────────────────
 const NEWS_SOURCES = {
   pokemon: [
-    { url: 'https://www.reddit.com/r/PokemonTCG/new.json?limit=10&raw_json=1',      label: 'r/PokemonTCG',        type: 'reddit' },
-    { url: 'https://www.reddit.com/r/pokemoncardmarket/new.json?limit=8&raw_json=1', label: 'r/pokemoncardmarket', type: 'reddit' },
-    { url: 'https://www.pokebeach.com/feed',                                          label: 'PokeBeach',           type: 'rss'    },
+    { url: 'https://www.reddit.com/r/PokemonTCG/new/.rss',        label: 'r/PokemonTCG'        },
+    { url: 'https://www.reddit.com/r/pokemoncardmarket/new/.rss',  label: 'r/pokemoncardmarket' },
+    { url: 'https://www.pokebeach.com/feed',                       label: 'PokeBeach'           },
   ],
   sports: [
-    { url: 'https://www.reddit.com/r/sportscards/new.json?limit=10&raw_json=1',      label: 'r/sportscards',       type: 'reddit' },
-    { url: 'https://www.reddit.com/r/baseballcards/new.json?limit=6&raw_json=1',     label: 'r/baseballcards',     type: 'reddit' },
-    { url: 'https://www.reddit.com/r/basketballcards/new.json?limit=6&raw_json=1',   label: 'r/basketballcards',   type: 'reddit' },
-    { url: 'https://www.cardboardconnection.com/feed',                                label: 'Cardboard Connection', type: 'rss'   },
+    { url: 'https://www.reddit.com/r/sportscards/new/.rss',        label: 'r/sportscards'       },
+    { url: 'https://www.reddit.com/r/baseballcards/new/.rss',      label: 'r/baseballcards'     },
+    { url: 'https://www.reddit.com/r/basketballcards/new/.rss',    label: 'r/basketballcards'   },
+    { url: 'https://www.cardboardconnection.com/feed',             label: 'Cardboard Connection' },
   ],
 };
