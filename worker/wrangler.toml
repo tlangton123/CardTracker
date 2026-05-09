@@ -1,0 +1,13 @@
+name            = "card-tracker-api"
+main            = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# ── Cron: refresh KV cache every 15 minutes ──
+[triggers]
+crons = ["*/15 * * * *"]
+
+# ── KV namespace ──
+# After running `wrangler kv namespace create CACHE`, paste the id below.
+[[kv_namespaces]]
+binding = "CACHE"
+id      = "REPLACE_WITH_YOUR_KV_ID"

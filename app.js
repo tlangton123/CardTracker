@@ -1,12 +1,7 @@
 'use strict';
 
-const TCG_API = 'https://api.pokemontcg.io/v2/sets';
-
-const PROXIES = [
-  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-];
+// ── After deploying your Cloudflare Worker, replace this URL ──
+const WORKER_URL = 'https://card-tracker-api.YOURSUBDOMAIN.workers.dev';
 
 let countdownTimers = {};
 
@@ -35,8 +30,8 @@ function init() {
 async function loadAll() {
   await Promise.allSettled([
     loadPokemonSets(),
-    loadNewsFeeds('pokemon-news', NEWS_SOURCES.pokemon),
-    loadNewsFeeds('sports-news',  NEWS_SOURCES.sports),
+    loadNewsFeeds('pokemon-news', '/api/news/pokemon'),
+    loadNewsFeeds('sports-news',  '/api/news/sports'),
   ]);
   setLastUpdated();
 }
@@ -59,16 +54,16 @@ function initTabs() {
 }
 
 // ─────────────────────────────────────────────
-//  POKÉMON TCG API
+//  POKÉMON TCG  (via Worker)
 // ─────────────────────────────────────────────
 async function loadPokemonSets() {
   const el = document.getElementById('pokemon-drops');
   el.innerHTML = skeletons(3);
 
   try {
-    const res = await fetch(`${TCG_API}?orderBy=-releaseDate&pageSize=60`);
-    if (!res.ok) throw new Error(`TCG API ${res.status}`);
-    const { data } = await res.json();
+    const res = await fetch(`${WORKER_URL}/api/pokemon-sets`);
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
 
     const now    = new Date();
     const cutoff = daysAgo(60);
@@ -222,112 +217,31 @@ function buildSportsCard(drop, isFeatured = false) {
 }
 
 // ─────────────────────────────────────────────
-//  NEWS FEEDS  (RSS + Atom via CORS proxy fallback chain)
+//  NEWS FEEDS  (via Worker — no CORS proxies needed)
 // ─────────────────────────────────────────────
-async function fetchWithFallback(url) {
-  for (const proxy of PROXIES) {
-    try {
-      const res = await Promise.race([
-        fetch(proxy(url)),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
-      ]);
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.length > 50) return text;
-      }
-    } catch { /* try next proxy */ }
-  }
-  throw new Error('all proxies failed');
-}
-
-async function loadNewsFeeds(containerId, sources) {
+async function loadNewsFeeds(containerId, endpoint) {
   const el = document.getElementById(containerId);
   el.innerHTML = skeletons(3);
 
-  const results = await Promise.allSettled(
-    sources.map(({ url, label }) =>
-      fetchWithFallback(url).then(text => parseRSS(text, label))
-    )
-  );
-
-  const seen  = new Set();
-  let   items = [];
-
-  results.forEach(r => {
-    if (r.status === 'fulfilled' && r.value?.length) {
-      r.value.forEach(item => {
-        if (!seen.has(item.title)) {
-          seen.add(item.title);
-          items.push(item);
-        }
-      });
-    }
-  });
-
-  if (!items.length) {
-    el.innerHTML = errorState('Could not load news feed — sources may be temporarily unavailable.');
-    return;
-  }
-
-  items = items
-    .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate))
-    .slice(0, 14);
-
-  el.innerHTML = '';
-  items.forEach((item, i) => {
-    const card = buildNewsCard(item);
-    card.style.animationDelay = `${i * 30}ms`;
-    el.appendChild(card);
-  });
-}
-
-function parseRSS(xmlText, label) {
   try {
-    const doc     = new DOMParser().parseFromString(xmlText, 'text/xml');
-    const items   = [...doc.querySelectorAll('item')];
-    const entries = [...doc.querySelectorAll('entry')];
+    const res = await fetch(`${WORKER_URL}${endpoint}`);
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const items = await res.json();
 
-    if (items.length) {
-      // RSS 2.0
-      return items.slice(0, 8).map(item => {
-        const linkEl = item.querySelector('link');
-        const link   = linkEl?.textContent?.trim()
-                    || linkEl?.nextSibling?.textContent?.trim()
-                    || item.querySelector('guid')?.textContent?.trim()
-                    || '';
-        return {
-          title:       item.querySelector('title')?.textContent?.trim() || '',
-          link,
-          pubDate:     item.querySelector('pubDate')?.textContent?.trim() || '',
-          description: stripHtml(item.querySelector('description')?.textContent || ''),
-          _source:     label,
-        };
-      }).filter(i => i.title && i.link);
+    if (!Array.isArray(items) || !items.length) {
+      el.innerHTML = emptyState('No news found right now — check back soon.');
+      return;
     }
 
-    if (entries.length) {
-      // Atom (Reddit .rss feeds)
-      return entries.slice(0, 8).map(entry => {
-        const linkEl = entry.querySelector('link[rel="alternate"], link');
-        const link   = linkEl?.getAttribute('href') || '';
-        const pubDate = entry.querySelector('published')?.textContent?.trim()
-                     || entry.querySelector('updated')?.textContent?.trim()
-                     || '';
-        const summary = entry.querySelector('summary')?.textContent
-                     || entry.querySelector('content')?.textContent
-                     || '';
-        return {
-          title:       entry.querySelector('title')?.textContent?.trim() || '',
-          link,
-          pubDate,
-          description: stripHtml(summary),
-          _source:     label,
-        };
-      }).filter(i => i.title && i.link);
-    }
-
-    return [];
-  } catch { return []; }
+    el.innerHTML = '';
+    items.slice(0, 14).forEach((item, i) => {
+      const card = buildNewsCard(item);
+      card.style.animationDelay = `${i * 30}ms`;
+      el.appendChild(card);
+    });
+  } catch (err) {
+    el.innerHTML = errorState('Could not load news feed — try refreshing.');
+  }
 }
 
 function buildNewsCard(item) {
