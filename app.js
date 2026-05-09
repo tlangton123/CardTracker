@@ -65,12 +65,12 @@ async function loadPokemonSets() {
     const { data } = await res.json();
 
     const now    = new Date();
-    const cutoff = daysAgo(180); // show past 6 months + all upcoming
+    const cutoff = daysAgo(60);
 
     const sets = (data || [])
       .filter(s => {
         const d = parseSetDate(s.releaseDate);
-        return d >= now || d >= cutoff; // all upcoming OR recent past
+        return d >= now || d >= cutoff; // all upcoming OR past 60 days
       })
       .sort((a, b) => parseSetDate(a.releaseDate) - parseSetDate(b.releaseDate));
 
@@ -216,17 +216,17 @@ function buildSportsCard(drop, isFeatured = false) {
 }
 
 // ─────────────────────────────────────────────
-//  NEWS FEEDS  (RSS via allorigins proxy + DOMParser)
+//  NEWS FEEDS  (Reddit JSON + RSS XML via allorigins proxy)
 // ─────────────────────────────────────────────
 async function loadNewsFeeds(containerId, sources) {
   const el = document.getElementById(containerId);
   el.innerHTML = skeletons(3);
 
   const results = await Promise.allSettled(
-    sources.map(({ url, label }) =>
+    sources.map(({ url, label, type }) =>
       fetch(CORS_PROXY + encodeURIComponent(url))
         .then(r => r.ok ? r.text() : Promise.reject(r.status))
-        .then(xml => parseRSS(xml, label))
+        .then(text => type === 'reddit' ? parseReddit(text, label) : parseRSS(text, label))
     )
   );
 
@@ -251,7 +251,7 @@ async function loadNewsFeeds(containerId, sources) {
 
   items = items
     .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate))
-    .slice(0, 12);
+    .slice(0, 14);
 
   el.innerHTML = '';
   items.forEach((item, i) => {
@@ -261,28 +261,41 @@ async function loadNewsFeeds(containerId, sources) {
   });
 }
 
+function parseReddit(text, label) {
+  try {
+    const json = JSON.parse(text);
+    if (!json?.data?.children) return [];
+    return json.data.children
+      .filter(c => c.kind === 't3' && !c.data.stickied)
+      .map(({ data: d }) => ({
+        title:       d.title,
+        link:        `https://www.reddit.com${d.permalink}`,
+        pubDate:     new Date(d.created_utc * 1000).toISOString(),
+        description: d.selftext || '',
+        _source:     label,
+      }));
+  } catch { return []; }
+}
+
 function parseRSS(xmlText, label) {
-  const doc   = new DOMParser().parseFromString(xmlText, 'text/xml');
-  const items = [...doc.querySelectorAll('item')];
-
-  return items.slice(0, 8).map(item => {
-    // <link> in RSS 2.0 is often a text node sibling rather than element content
-    const linkEl  = item.querySelector('link');
-    const link    = linkEl?.textContent?.trim()
-                 || linkEl?.nextSibling?.textContent?.trim()
-                 || item.querySelector('guid')?.textContent?.trim()
-                 || '';
-    const desc    = item.querySelector('description')?.textContent || '';
-    const pubDate = item.querySelector('pubDate')?.textContent?.trim() || '';
-
-    return {
-      title:    item.querySelector('title')?.textContent?.trim() || '',
-      link,
-      pubDate,
-      description: stripHtml(desc),
-      _source: label,
-    };
-  }).filter(i => i.title && i.link);
+  try {
+    const doc   = new DOMParser().parseFromString(xmlText, 'text/xml');
+    const items = [...doc.querySelectorAll('item')];
+    return items.slice(0, 8).map(item => {
+      const linkEl = item.querySelector('link');
+      const link   = linkEl?.textContent?.trim()
+                  || linkEl?.nextSibling?.textContent?.trim()
+                  || item.querySelector('guid')?.textContent?.trim()
+                  || '';
+      return {
+        title:       item.querySelector('title')?.textContent?.trim() || '',
+        link,
+        pubDate:     item.querySelector('pubDate')?.textContent?.trim() || '',
+        description: stripHtml(item.querySelector('description')?.textContent || ''),
+        _source:     label,
+      };
+    }).filter(i => i.title && i.link);
+  } catch { return []; }
 }
 
 function buildNewsCard(item) {

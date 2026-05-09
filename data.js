@@ -234,15 +234,20 @@ const SPORTS_CURATED_DROPS = [
 ];
 
 // ─────────────────────────────────────────────
-//  NEWS SOURCES  (RSS feeds, parsed client-side)
+//  NEWS SOURCES
+//  type:'reddit' → fetched via allorigins proxy, parsed as JSON
+//  type:'rss'    → fetched via allorigins proxy, parsed as XML
 // ─────────────────────────────────────────────
 const NEWS_SOURCES = {
   pokemon: [
-    { url: 'https://www.pokebeach.com/feed',   label: 'PokeBeach'  },
-    { url: 'https://pokejungle.net/feed/',     label: 'PokéJungle' },
+    { url: 'https://www.reddit.com/r/PokemonTCG/new.json?limit=10&raw_json=1',      label: 'r/PokemonTCG',        type: 'reddit' },
+    { url: 'https://www.reddit.com/r/pokemoncardmarket/new.json?limit=8&raw_json=1', label: 'r/pokemoncardmarket', type: 'reddit' },
+    { url: 'https://www.pokebeach.com/feed',                                          label: 'PokeBeach',           type: 'rss'    },
   ],
   sports: [
-    { url: 'https://www.cardboardconnection.com/feed', label: 'Cardboard Connection' },
-    { url: 'https://www.beckett.com/feed/',            label: 'Beckett'              },
+    { url: 'https://www.reddit.com/r/sportscards/new.json?limit=10&raw_json=1',      label: 'r/sportscards',       type: 'reddit' },
+    { url: 'https://www.reddit.com/r/baseballcards/new.json?limit=6&raw_json=1',     label: 'r/baseballcards',     type: 'reddit' },
+    { url: 'https://www.reddit.com/r/basketballcards/new.json?limit=6&raw_json=1',   label: 'r/basketballcards',   type: 'reddit' },
+    { url: 'https://www.cardboardconnection.com/feed',                                label: 'Cardboard Connection', type: 'rss'   },
   ],
 };
