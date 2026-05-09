@@ -1,6 +1,7 @@
 'use strict';
 
-const TCG_API = 'https://api.pokemontcg.io/v2/sets';
+const TCG_API  = 'https://api.pokemontcg.io/v2/sets';
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
 let countdownTimers = {};
 
@@ -9,8 +10,8 @@ let countdownTimers = {};
 // ─────────────────────────────────────────────
 function init() {
   initTabs();
-  renderRetailers('pokemon-retailers', POKEMON_RETAILERS, 'pokemon');
-  renderRetailers('sports-retailers',  SPORTS_RETAILERS,  'sports');
+  renderRetailers('pokemon-retailers', POKEMON_RETAILERS);
+  renderRetailers('sports-retailers',  SPORTS_RETAILERS);
   renderFollows('pokemon-follows', POKEMON_FOLLOWS);
   renderFollows('sports-follows',  SPORTS_FOLLOWS);
   renderSportsDrops();
@@ -20,12 +21,9 @@ function init() {
     const btn = document.getElementById('refreshBtn');
     btn.classList.add('spinning');
     clearCountdowns();
-    loadAll().finally(() => {
-      setTimeout(() => btn.classList.remove('spinning'), 600);
-    });
+    loadAll().finally(() => setTimeout(() => btn.classList.remove('spinning'), 600));
   });
 
-  // Auto-refresh every 10 minutes
   setInterval(() => { clearCountdowns(); loadAll(); }, 10 * 60 * 1000);
 }
 
@@ -59,18 +57,21 @@ function initTabs() {
 // ─────────────────────────────────────────────
 async function loadPokemonSets() {
   const el = document.getElementById('pokemon-drops');
-  el.innerHTML = skeletons(3, 'pokemon');
+  el.innerHTML = skeletons(3);
 
   try {
-    const res = await fetch(`${TCG_API}?orderBy=-releaseDate&pageSize=40`);
+    const res = await fetch(`${TCG_API}?orderBy=-releaseDate&pageSize=60`);
     if (!res.ok) throw new Error(`TCG API ${res.status}`);
     const { data } = await res.json();
 
     const now    = new Date();
-    const cutoff = daysAgo(60);
+    const cutoff = daysAgo(180); // show past 6 months + all upcoming
 
     const sets = (data || [])
-      .filter(s => parseSetDate(s.releaseDate) >= cutoff)
+      .filter(s => {
+        const d = parseSetDate(s.releaseDate);
+        return d >= now || d >= cutoff; // all upcoming OR recent past
+      })
       .sort((a, b) => parseSetDate(a.releaseDate) - parseSetDate(b.releaseDate));
 
     if (!sets.length) {
@@ -78,32 +79,27 @@ async function loadPokemonSets() {
       return;
     }
 
-    // Countdown to next upcoming set
     const next = sets.find(s => parseSetDate(s.releaseDate) >= now);
     if (next) startCountdown('pokemon', next.name, parseSetDate(next.releaseDate));
 
     el.innerHTML = '';
     sets.forEach((s, i) => {
-      const card = buildPokemonCard(s, s.id === (next?.id));
+      const card = buildPokemonCard(s, s.id === next?.id);
       card.style.animationDelay = `${i * 40}ms`;
       el.appendChild(card);
     });
-  } catch {
-    el.innerHTML = errorState(
-      'Could not load Pokémon sets. ',
-      'Check PokeBeach →',
-      'https://www.pokebeach.com'
-    );
+  } catch (err) {
+    el.innerHTML = errorState('Could not load Pokémon sets. ', 'Check PokeBeach →', 'https://www.pokebeach.com');
   }
 }
 
 function buildPokemonCard(set, isFeatured = false) {
-  const date    = parseSetDate(set.releaseDate);
-  const now     = new Date();
-  const isPast  = date < now;
-  const diff    = date - now;
-  const isNew   = !isPast && diff < 7 * 86400000;
-  const isSoon  = !isPast && diff < 30 * 86400000;
+  const date   = parseSetDate(set.releaseDate);
+  const now    = new Date();
+  const isPast = date < now;
+  const diff   = date - now;
+  const isNew  = !isPast && diff < 7 * 86400000;
+  const isSoon = !isPast && diff < 30 * 86400000;
 
   const div = document.createElement('div');
   div.className = `drop-card drop-card--pokemon ${isPast ? 'is-past' : 'is-upcoming'} ${isFeatured ? 'is-featured' : ''}`;
@@ -111,17 +107,17 @@ function buildPokemonCard(set, isFeatured = false) {
   div.innerHTML = `
     <div class="drop-card__symbol">
       ${set.images?.symbol
-        ? `<img class="set-symbol" src="${set.images.symbol}" alt="${esc(set.name)} symbol" loading="lazy" />`
+        ? `<img class="set-symbol" src="${set.images.symbol}" alt="${esc(set.name)}" loading="lazy" />`
         : `<span class="set-symbol-placeholder">⚡</span>`}
     </div>
     <div class="drop-card__main">
       <div class="drop-card__top-row">
         <div class="drop-card__name">${esc(set.name)}</div>
         <div class="drop-card__badges">
-          ${isFeatured && !isPast ? '<span class="badge-featured">NEXT DROP</span>' : ''}
-          ${isNew  && !isFeatured ? '<span class="badge-new">NEW</span>'            : ''}
-          ${isSoon && !isNew && !isFeatured ? '<span class="badge-upcoming">SOON</span>' : ''}
-          ${isPast ? '<span class="badge-out">OUT NOW</span>'        : ''}
+          ${isFeatured && !isPast      ? '<span class="badge-featured">NEXT DROP</span>' : ''}
+          ${isNew      && !isFeatured  ? '<span class="badge-new">NEW</span>'            : ''}
+          ${isSoon     && !isNew && !isFeatured ? '<span class="badge-upcoming">SOON</span>' : ''}
+          ${isPast                     ? '<span class="badge-out">OUT NOW</span>'        : ''}
           <a href="https://x.com/search?q=${encodeURIComponent(set.name + ' pokemon tcg')}"
              target="_blank" rel="noopener" class="x-search-link" title="Search on X">𝕏</a>
         </div>
@@ -142,19 +138,17 @@ function buildPokemonCard(set, isFeatured = false) {
 }
 
 // ─────────────────────────────────────────────
-//  SPORTS  (curated data.js)
+//  SPORTS  (curated — no date cutoff)
 // ─────────────────────────────────────────────
 function renderSportsDrops() {
   const el  = document.getElementById('sports-drops');
   const now = new Date();
-  const cut = daysAgo(60);
 
-  const drops = SPORTS_CURATED_DROPS
-    .filter(d => new Date(d.date) >= cut)
+  const drops = [...SPORTS_CURATED_DROPS]
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   if (!drops.length) {
-    el.innerHTML = emptyState('No sports drops in range. Edit data.js to add releases.');
+    el.innerHTML = emptyState('No sports drops found. Edit data.js to add releases.');
     return;
   }
 
@@ -163,7 +157,7 @@ function renderSportsDrops() {
 
   el.innerHTML = '';
   drops.forEach((d, i) => {
-    const card = buildSportsCard(d, d.id === (next?.id));
+    const card = buildSportsCard(d, d.id === next?.id);
     card.style.animationDelay = `${i * 40}ms`;
     el.appendChild(card);
   });
@@ -194,10 +188,10 @@ function buildSportsCard(drop, isFeatured = false) {
       <div class="drop-card__top-row">
         <div class="drop-card__name">${esc(drop.name)}</div>
         <div class="drop-card__badges">
-          ${isFeatured && !isPast ? '<span class="badge-featured">NEXT DROP</span>' : ''}
-          ${isNew && !isFeatured  ? '<span class="badge-new">NEW</span>' : ''}
-          ${!isPast ? `<span class="hype-badge ${hueCls[drop.hype] || 'hype-medium'}">${(drop.hype || 'mid').toUpperCase()} HYPE</span>` : ''}
-          ${isPast  ? '<span class="badge-out">OUT NOW</span>' : ''}
+          ${isFeatured && !isPast     ? '<span class="badge-featured">NEXT DROP</span>'                                                    : ''}
+          ${isNew      && !isFeatured ? '<span class="badge-new">NEW</span>'                                                               : ''}
+          ${!isPast                   ? `<span class="hype-badge ${hueCls[drop.hype] || 'hype-medium'}">${(drop.hype||'mid').toUpperCase()} HYPE</span>` : ''}
+          ${isPast                    ? '<span class="badge-out">OUT NOW</span>'                                                           : ''}
         </div>
       </div>
       <div class="drop-card__meta">
@@ -213,7 +207,7 @@ function buildSportsCard(drop, isFeatured = false) {
       ${keyChips ? `<div class="key-cards">${keyChips}</div>` : ''}
       <div class="drop-card__links">
         ${retailerLinks}
-        <a href="${drop.xSearch}" target="_blank" rel="noopener" class="x-search-link">𝕏 Search</a>
+        <a href="${drop.xSearch}"   target="_blank" rel="noopener" class="x-search-link">𝕏 Search</a>
         <a href="${drop.xAnnounce}" target="_blank" rel="noopener" class="x-search-link">𝕏 Official</a>
       </div>
     </div>`;
@@ -222,26 +216,25 @@ function buildSportsCard(drop, isFeatured = false) {
 }
 
 // ─────────────────────────────────────────────
-//  NEWS FEEDS  (Reddit public JSON API)
+//  NEWS FEEDS  (RSS via allorigins proxy + DOMParser)
 // ─────────────────────────────────────────────
 async function loadNewsFeeds(containerId, sources) {
   const el = document.getElementById(containerId);
-  el.innerHTML = skeletons(3, containerId.includes('pokemon') ? 'pokemon' : 'sports');
+  el.innerHTML = skeletons(3);
 
   const results = await Promise.allSettled(
-    sources.map(({ url, label }) => {
-      const proxied = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-      return fetch(proxied)
-        .then(r => r.ok ? r.json() : null)
-        .then(json => redditToItems(json, label));
-    })
+    sources.map(({ url, label }) =>
+      fetch(CORS_PROXY + encodeURIComponent(url))
+        .then(r => r.ok ? r.text() : Promise.reject(r.status))
+        .then(xml => parseRSS(xml, label))
+    )
   );
 
   const seen  = new Set();
   let   items = [];
 
   results.forEach(r => {
-    if (r.status === 'fulfilled' && r.value) {
+    if (r.status === 'fulfilled' && r.value?.length) {
       r.value.forEach(item => {
         if (!seen.has(item.title)) {
           seen.add(item.title);
@@ -252,7 +245,7 @@ async function loadNewsFeeds(containerId, sources) {
   });
 
   if (!items.length) {
-    el.innerHTML = errorState('Could not load news feed. Check your connection.');
+    el.innerHTML = errorState('Could not load news feed — sources may be temporarily unavailable.');
     return;
   }
 
@@ -268,23 +261,34 @@ async function loadNewsFeeds(containerId, sources) {
   });
 }
 
-function redditToItems(json, label) {
-  if (!json?.data?.children) return [];
-  return json.data.children
-    .filter(c => c.kind === 't3' && !c.data.stickied)
-    .map(({ data: d }) => ({
-      title:       d.title,
-      link:        `https://www.reddit.com${d.permalink}`,
-      pubDate:     new Date(d.created_utc * 1000).toISOString(),
-      description: d.selftext || '',
-      _source:     label,
-    }));
+function parseRSS(xmlText, label) {
+  const doc   = new DOMParser().parseFromString(xmlText, 'text/xml');
+  const items = [...doc.querySelectorAll('item')];
+
+  return items.slice(0, 8).map(item => {
+    // <link> in RSS 2.0 is often a text node sibling rather than element content
+    const linkEl  = item.querySelector('link');
+    const link    = linkEl?.textContent?.trim()
+                 || linkEl?.nextSibling?.textContent?.trim()
+                 || item.querySelector('guid')?.textContent?.trim()
+                 || '';
+    const desc    = item.querySelector('description')?.textContent || '';
+    const pubDate = item.querySelector('pubDate')?.textContent?.trim() || '';
+
+    return {
+      title:    item.querySelector('title')?.textContent?.trim() || '',
+      link,
+      pubDate,
+      description: stripHtml(desc),
+      _source: label,
+    };
+  }).filter(i => i.title && i.link);
 }
 
 function buildNewsCard(item) {
   const pubDate = item.pubDate ? new Date(item.pubDate) : null;
   const domain  = tryDomain(item.link);
-  const desc    = stripHtml(item.description || '').slice(0, 130).trim();
+  const desc    = (item.description || '').slice(0, 130).trim();
 
   const div = document.createElement('div');
   div.className = 'news-card';
@@ -293,7 +297,7 @@ function buildNewsCard(item) {
     ${desc ? `<div class="news-card__desc">${esc(desc)}…</div>` : ''}
     <div class="news-card__meta">
       <span class="news-source">${esc(item._source || domain)}</span>
-      ${pubDate ? `<span class="news-date">${relDate(pubDate)}</span>` : ''}
+      ${pubDate && !isNaN(pubDate) ? `<span class="news-date">${relDate(pubDate)}</span>` : ''}
     </div>`;
   return div;
 }
@@ -301,7 +305,7 @@ function buildNewsCard(item) {
 // ─────────────────────────────────────────────
 //  RETAILERS
 // ─────────────────────────────────────────────
-function renderRetailers(id, list, pane) {
+function renderRetailers(id, list) {
   document.getElementById(id).innerHTML = list.map(r => `
     <a href="${r.url}" target="_blank" rel="noopener" class="retailer-card">
       <span class="retailer-icon">${r.icon}</span>
@@ -333,22 +337,17 @@ function startCountdown(key, name, targetDate) {
   const timerEl = document.getElementById(`${key}-countdown-timer`);
   if (!banner || targetDate <= new Date()) return;
 
-  nameEl.textContent  = name;
+  nameEl.textContent   = name;
   banner.style.display = 'flex';
-
   if (countdownTimers[key]) clearInterval(countdownTimers[key]);
 
   const tick = () => {
     const ms = targetDate - new Date();
-    if (ms <= 0) {
-      timerEl.textContent = 'OUT NOW';
-      clearInterval(countdownTimers[key]);
-      return;
-    }
+    if (ms <= 0) { timerEl.textContent = 'OUT NOW'; clearInterval(countdownTimers[key]); return; }
     const d = Math.floor(ms / 86400000);
     const h = Math.floor((ms % 86400000) / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    const s = Math.floor((ms % 60000) / 1000);
+    const m = Math.floor((ms % 3600000)  / 60000);
+    const s = Math.floor((ms % 60000)    / 1000);
     timerEl.textContent = d > 0
       ? `${d}d ${pad(h)}h ${pad(m)}m`
       : `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
@@ -373,13 +372,12 @@ function pad(n) { return String(n).padStart(2, '0'); }
 
 function esc(s) {
   return String(s ?? '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function parseSetDate(str) {
-  // TCG API format: "2025/01/17" or "2025-01-17"
-  return new Date(str.replace(/\//g, '-'));
+  return new Date(String(str).replace(/\//g, '-'));
 }
 
 function daysAgo(n) {
@@ -396,30 +394,32 @@ function relDate(d) {
   const diff = d - new Date();
   const abs  = Math.abs(diff);
   const days = Math.floor(abs / 86400000);
-
   if (diff < 0) {
-    if (days === 0) return 'today';
-    if (days === 1) return 'yesterday';
-    if (days <  7) return `${days}d ago`;
-    if (days < 30) return `${Math.floor(days / 7)}w ago`;
-    return `${Math.floor(days / 30)}mo ago`;
+    if (days  ===  0) return 'today';
+    if (days  ===  1) return 'yesterday';
+    if (days  <   7) return `${days}d ago`;
+    if (days  <  30) return `${Math.floor(days / 7)}w ago`;
+    if (days  < 365) return `${Math.floor(days / 30)}mo ago`;
+    return `${Math.floor(days / 365)}y ago`;
   } else {
-    if (days === 0) return 'today';
-    if (days === 1) return 'tomorrow';
-    if (days <  7) return `in ${days}d`;
-    if (days < 30) return `in ${Math.floor(days / 7)}w`;
-    if (days < 365) return `in ${Math.floor(days / 30)}mo`;
+    if (days  ===  0) return 'today';
+    if (days  ===  1) return 'tomorrow';
+    if (days  <   7) return `in ${days}d`;
+    if (days  <  30) return `in ${Math.floor(days / 7)}w`;
+    if (days  < 365) return `in ${Math.floor(days / 30)}mo`;
     return `in ${Math.floor(days / 365)}y`;
   }
 }
 
-function stripHtml(s) { return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(); }
+function stripHtml(s) {
+  return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
 
 function tryDomain(url) {
   try { return new URL(url).hostname.replace('www.', ''); } catch { return ''; }
 }
 
-function skeletons(n, pane) {
+function skeletons(n) {
   return Array(n).fill(0).map(() => `
     <div class="skeleton-card">
       <div class="sk sk-title"></div>
@@ -428,9 +428,7 @@ function skeletons(n, pane) {
     </div>`).join('');
 }
 
-function emptyState(msg) {
-  return `<div class="empty-state">${msg}</div>`;
-}
+function emptyState(msg) { return `<div class="empty-state">${msg}</div>`; }
 
 function errorState(msg, linkText, linkHref) {
   const link = linkText ? `<a href="${linkHref}" target="_blank" rel="noopener">${linkText}</a>` : '';
@@ -442,7 +440,4 @@ function setLastUpdated() {
   if (el) el.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-// ─────────────────────────────────────────────
-//  START
-// ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
