@@ -1,7 +1,12 @@
 'use strict';
 
-const TCG_API  = 'https://api.pokemontcg.io/v2/sets';
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const TCG_API = 'https://api.pokemontcg.io/v2/sets';
+
+const PROXIES = [
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+];
 
 let countdownTimers = {};
 
@@ -217,17 +222,31 @@ function buildSportsCard(drop, isFeatured = false) {
 }
 
 // ─────────────────────────────────────────────
-//  NEWS FEEDS  (Reddit JSON + RSS XML via allorigins proxy)
+//  NEWS FEEDS  (RSS + Atom via CORS proxy fallback chain)
 // ─────────────────────────────────────────────
+async function fetchWithFallback(url) {
+  for (const proxy of PROXIES) {
+    try {
+      const res = await Promise.race([
+        fetch(proxy(url)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+      ]);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.length > 50) return text;
+      }
+    } catch { /* try next proxy */ }
+  }
+  throw new Error('all proxies failed');
+}
+
 async function loadNewsFeeds(containerId, sources) {
   const el = document.getElementById(containerId);
   el.innerHTML = skeletons(3);
 
   const results = await Promise.allSettled(
-    sources.map(({ url, label, type }) =>
-      fetch(CORS_PROXY + encodeURIComponent(url))
-        .then(r => r.ok ? r.text() : Promise.reject(r.status))
-        .then(text => type === 'reddit' ? parseReddit(text, label) : parseRSS(text, label))
+    sources.map(({ url, label }) =>
+      fetchWithFallback(url).then(text => parseRSS(text, label))
     )
   );
 
@@ -262,40 +281,52 @@ async function loadNewsFeeds(containerId, sources) {
   });
 }
 
-function parseReddit(text, label) {
-  try {
-    const json = JSON.parse(text);
-    if (!json?.data?.children) return [];
-    return json.data.children
-      .filter(c => c.kind === 't3' && !c.data.stickied)
-      .map(({ data: d }) => ({
-        title:       d.title,
-        link:        `https://www.reddit.com${d.permalink}`,
-        pubDate:     new Date(d.created_utc * 1000).toISOString(),
-        description: d.selftext || '',
-        _source:     label,
-      }));
-  } catch { return []; }
-}
-
 function parseRSS(xmlText, label) {
   try {
-    const doc   = new DOMParser().parseFromString(xmlText, 'text/xml');
-    const items = [...doc.querySelectorAll('item')];
-    return items.slice(0, 8).map(item => {
-      const linkEl = item.querySelector('link');
-      const link   = linkEl?.textContent?.trim()
-                  || linkEl?.nextSibling?.textContent?.trim()
-                  || item.querySelector('guid')?.textContent?.trim()
-                  || '';
-      return {
-        title:       item.querySelector('title')?.textContent?.trim() || '',
-        link,
-        pubDate:     item.querySelector('pubDate')?.textContent?.trim() || '',
-        description: stripHtml(item.querySelector('description')?.textContent || ''),
-        _source:     label,
-      };
-    }).filter(i => i.title && i.link);
+    const doc     = new DOMParser().parseFromString(xmlText, 'text/xml');
+    const items   = [...doc.querySelectorAll('item')];
+    const entries = [...doc.querySelectorAll('entry')];
+
+    if (items.length) {
+      // RSS 2.0
+      return items.slice(0, 8).map(item => {
+        const linkEl = item.querySelector('link');
+        const link   = linkEl?.textContent?.trim()
+                    || linkEl?.nextSibling?.textContent?.trim()
+                    || item.querySelector('guid')?.textContent?.trim()
+                    || '';
+        return {
+          title:       item.querySelector('title')?.textContent?.trim() || '',
+          link,
+          pubDate:     item.querySelector('pubDate')?.textContent?.trim() || '',
+          description: stripHtml(item.querySelector('description')?.textContent || ''),
+          _source:     label,
+        };
+      }).filter(i => i.title && i.link);
+    }
+
+    if (entries.length) {
+      // Atom (Reddit .rss feeds)
+      return entries.slice(0, 8).map(entry => {
+        const linkEl = entry.querySelector('link[rel="alternate"], link');
+        const link   = linkEl?.getAttribute('href') || '';
+        const pubDate = entry.querySelector('published')?.textContent?.trim()
+                     || entry.querySelector('updated')?.textContent?.trim()
+                     || '';
+        const summary = entry.querySelector('summary')?.textContent
+                     || entry.querySelector('content')?.textContent
+                     || '';
+        return {
+          title:       entry.querySelector('title')?.textContent?.trim() || '',
+          link,
+          pubDate,
+          description: stripHtml(summary),
+          _source:     label,
+        };
+      }).filter(i => i.title && i.link);
+    }
+
+    return [];
   } catch { return []; }
 }
 
