@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pack Drop Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── Site Header ── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">📦</span>
+        <div class="logo-text">
+          <h1>Pack Drop Tracker</h1>
+          <span class="tagline">Live card releases &amp; drop queues</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="live-indicator">
+          <span class="live-dot"></span>
+          Live
+        </span>
+        <span class="last-updated" id="last-updated"></span>
+        <button class="refresh-btn" id="refreshBtn" title="Refresh feeds">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Mobile Tab Bar ── -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-target="pane-pokemon">
+      <span class="tab-icon">⚡</span>
+      <span>Pokémon</span>
+    </button>
+    <button class="tab-btn" data-target="pane-sports">
+      <span class="tab-icon">🏈</span>
+      <span>Sports</span>
+    </button>
+  </div>
+
+  <!-- ── Two-Pane Layout ── -->
+  <div class="two-pane">
+
+    <!-- ══ POKÉMON PANE ══ -->
+    <div class="pane pane--pokemon pane--active" id="pane-pokemon">
+
+      <div class="pane-header pane-header--pokemon">
+        <div class="pane-title">
+          <span class="pane-icon">⚡</span>
+          <h2>Pokémon Cards</h2>
+        </div>
+        <div class="pane-header-links">
+          <a href="https://x.com/search?q=%23PokemonTCG+release+drop" target="_blank" rel="noopener" class="x-link">
+            𝕏 Search drops
+          </a>
+          <a href="https://www.pokemoncenter.com/category/card-game" target="_blank" rel="noopener" class="buy-link">
+            Buy now →
+          </a>
+        </div>
+      </div>
+
+      <!-- Countdown to next Pokémon drop -->
+      <div class="countdown-banner countdown-banner--pokemon" id="pokemon-countdown-banner" style="display:none">
+        <div class="countdown-left">
+          <div class="countdown-label">Next Release</div>
+          <div class="countdown-name" id="pokemon-countdown-name"></div>
+        </div>
+        <div class="countdown-right">
+          <div class="countdown-timer" id="pokemon-countdown-timer"></div>
+          <div class="countdown-sublabel">until release</div>
+        </div>
+      </div>
+
+      <!-- Upcoming Pokémon Releases -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>Upcoming &amp; Recent Releases</h3>
+          <span class="source-tag">
+            <span class="source-dot"></span>
+            Pokémon TCG API
+          </span>
+        </div>
+        <div class="drops-list" id="pokemon-drops">
+          <!-- skeleton injected by JS -->
+        </div>
+      </section>
+
+      <!-- Pokémon News Feed -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>News &amp; Announcements</h3>
+          <div class="section-hd-right">
+            <span class="source-tag">
+              <span class="source-dot"></span>
+              RSS
+            </span>
+            <a href="https://www.pokebeach.com" target="_blank" rel="noopener" class="see-more-link">PokeBeach →</a>
+          </div>
+        </div>
+        <div class="news-list" id="pokemon-news"></div>
+      </section>
+
+      <!-- Pokémon Queue & Buy Links -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>Queue &amp; Buy</h3>
+          <span class="section-note">Opens on release day</span>
+        </div>
+        <div class="retailer-grid" id="pokemon-retailers"></div>
+      </section>
+
+      <!-- Pokémon X Follows -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>Follow on 𝕏 for Drop Alerts</h3>
+        </div>
+        <div class="follow-grid" id="pokemon-follows"></div>
+      </section>
+
+    </div><!-- /pane-pokemon -->
+
+    <!-- ── Pane Divider ── -->
+    <div class="pane-divider"></div>
+
+    <!-- ══ SPORTS PANE ══ -->
+    <div class="pane pane--sports" id="pane-sports">
+
+      <div class="pane-header pane-header--sports">
+        <div class="pane-title">
+          <span class="pane-icon">🏈</span>
+          <h2>Sports Cards</h2>
+        </div>
+        <div class="pane-header-links">
+          <a href="https://x.com/search?q=%23sportscards+release+drop" target="_blank" rel="noopener" class="x-link">
+            𝕏 Search drops
+          </a>
+          <a href="https://www.blowoutcards.com" target="_blank" rel="noopener" class="buy-link">
+            Buy now →
+          </a>
+        </div>
+      </div>
+
+      <!-- Countdown to next Sports drop -->
+      <div class="countdown-banner countdown-banner--sports" id="sports-countdown-banner" style="display:none">
+        <div class="countdown-left">
+          <div class="countdown-label">Next Release</div>
+          <div class="countdown-name" id="sports-countdown-name"></div>
+        </div>
+        <div class="countdown-right">
+          <div class="countdown-timer" id="sports-countdown-timer"></div>
+          <div class="countdown-sublabel">until release</div>
+        </div>
+      </div>
+
+      <!-- Upcoming Sports Releases -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>Upcoming &amp; Recent Releases</h3>
+          <span class="source-tag">
+            <span class="source-dot"></span>
+            Curated
+            <button class="info-btn" title="Sports card releases are curated in data.js. Update to add new drops.">?</button>
+          </span>
+        </div>
+        <div class="drops-list" id="sports-drops"></div>
+      </section>
+
+      <!-- Sports News Feed -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>News &amp; Announcements</h3>
+          <div class="section-hd-right">
+            <span class="source-tag">
+              <span class="source-dot"></span>
+              RSS
+            </span>
+            <a href="https://www.cardboardconnection.com" target="_blank" rel="noopener" class="see-more-link">Cardboard Connection →</a>
+          </div>
+        </div>
+        <div class="news-list" id="sports-news"></div>
+      </section>
+
+      <!-- Sports Queue & Buy Links -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>Queue &amp; Buy</h3>
+          <span class="section-note">Pre-orders available before release</span>
+        </div>
+        <div class="retailer-grid" id="sports-retailers"></div>
+      </section>
+
+      <!-- Sports X Follows -->
+      <section class="pane-section">
+        <div class="section-hd">
+          <h3>Follow on 𝕏 for Drop Alerts</h3>
+        </div>
+        <div class="follow-grid" id="sports-follows"></div>
+      </section>
+
+    </div><!-- /pane-sports -->
+
+  </div><!-- /two-pane -->
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>Pack Drop Tracker</span>
+      <span class="footer-dot">·</span>
+      <span>Pokémon data: <a href="https://pokemontcg.io" target="_blank">pokemontcg.io</a></span>
+      <span class="footer-dot">·</span>
+      <span>News: RSS feeds</span>
+      <span class="footer-dot">·</span>
+      <span>Not affiliated with any retailer · Values are estimates only</span>
+    </div>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
