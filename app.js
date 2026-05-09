@@ -229,11 +229,12 @@ async function loadNewsFeeds(containerId, sources) {
   el.innerHTML = skeletons(3, containerId.includes('pokemon') ? 'pokemon' : 'sports');
 
   const results = await Promise.allSettled(
-    sources.map(({ url, label }) =>
-      fetch(url, { headers: { 'Accept': 'application/json' } })
+    sources.map(({ url, label }) => {
+      const proxied = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      return fetch(proxied)
         .then(r => r.ok ? r.json() : null)
-        .then(json => redditToItems(json, label))
-    )
+        .then(json => redditToItems(json, label));
+    })
   );
 
   const seen  = new Set();
