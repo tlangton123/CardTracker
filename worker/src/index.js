@@ -3,21 +3,22 @@
 // ─────────────────────────────────────────────
 //  CONFIG
 // ─────────────────────────────────────────────
-const TCG_API = 'https://api.pokemontcg.io/v2/sets';
+const TCG_API  = 'https://api.pokemontcg.io/v2/sets';
 const CACHE_TTL = 900; // 15 minutes
 
-const NEWS_SOURCES = {
-  pokemon: [
-    { url: 'https://www.pokeguardian.com/feed/',                             label: 'PokéGuardian'        },
-    { url: 'https://www.ptcgradio.com/feed/',                                label: 'PTCG Radio'          },
-    { url: 'https://tcgplayer-content.tcgplayer.com/feed/blog',              label: 'TCGPlayer Blog'      },
-    { url: 'https://limitlesstcg.com/news/feed/',                            label: 'Limitless TCG'       },
-  ],
+// Reddit subreddits fetched via OAuth API (no blocking)
+const REDDIT_SUBS = {
+  pokemon: ['PokemonTCG', 'pokemoncardmarket'],
+  sports:  ['sportscards', 'baseballcards', 'basketballcards'],
+};
+
+// RSS feeds confirmed to return valid XML from Cloudflare IPs
+const RSS_SOURCES = {
+  pokemon: [],
   sports: [
-    { url: 'https://www.cardboardconnection.com/feed',                       label: 'Cardboard Connection' },
-    { url: 'https://www.sportscollectorsdaily.com/feed/',                    label: 'Sports Collectors Daily' },
-    { url: 'https://www.beckett.com/news/feed/',                             label: 'Beckett'             },
-    { url: 'https://blowoutcards.com/forums/external.php?type=RSS2',        label: 'Blowout Forums'      },
+    { url: 'https://www.cardboardconnection.com/feed',          label: 'Cardboard Connection'  },
+    { url: 'https://www.sportscollectorsdaily.com/feed/',       label: 'Sports Collectors Daily' },
+    { url: 'https://www.beckett.com/news/feed/',                label: 'Beckett'               },
   ],
 };
 
@@ -45,37 +46,24 @@ export default {
       case '/api/pokemon-sets':
         return serveCached(env, 'pokemon-sets', fetchPokemonSets);
       case '/api/news/pokemon':
-        return serveCached(env, 'news-pokemon', () => fetchAllNews('pokemon'));
+        return serveCached(env, 'news-pokemon', () => fetchAllNews(env, 'pokemon'));
       case '/api/news/sports':
-        return serveCached(env, 'news-sports', () => fetchAllNews('sports'));
+        return serveCached(env, 'news-sports',  () => fetchAllNews(env, 'sports'));
       case '/api/health':
-        return jsonOk({ status: 'ok', ts: new Date().toISOString() });
-      case '/api/debug/feeds': {
-        const tests = await Promise.all(
-          [...NEWS_SOURCES.pokemon, ...NEWS_SOURCES.sports].map(async ({ url, label }) => {
-            try {
-              const r = await fetch(url, { headers: { 'User-Agent': 'CardTrackerBot/1.0' } });
-              const text = await r.text();
-              return { label, url, status: r.status, bytes: text.length, preview: text.slice(0, 200) };
-            } catch (e) {
-              return { label, url, status: 'error', error: e.message };
-            }
-          })
-        );
-        return jsonOk(tests);
-      }
+        return jsonOk({ status: 'ok', ts: new Date().toISOString(), reddit: !!(env.REDDIT_CLIENT_ID) });
+      case '/api/debug/feeds':
+        return debugFeeds(env);
       default:
         return new Response('Not found', { status: 404, headers: CORS_HEADERS });
     }
   },
 
-  // Cron trigger — refreshes all KV cache every 15 minutes
   async scheduled(event, env) {
     console.log('Cron refresh started:', new Date().toISOString());
     const results = await Promise.allSettled([
       refreshKey(env, 'pokemon-sets', fetchPokemonSets),
-      refreshKey(env, 'news-pokemon', () => fetchAllNews('pokemon')),
-      refreshKey(env, 'news-sports',  () => fetchAllNews('sports')),
+      refreshKey(env, 'news-pokemon', () => fetchAllNews(env, 'pokemon')),
+      refreshKey(env, 'news-sports',  () => fetchAllNews(env, 'sports')),
     ]);
     results.forEach((r, i) => {
       const key = ['pokemon-sets', 'news-pokemon', 'news-sports'][i];
@@ -90,9 +78,7 @@ export default {
 // ─────────────────────────────────────────────
 async function serveCached(env, key, fetcher) {
   const cached = await env.CACHE.get(key, 'json');
-  if (cached !== null) {
-    return jsonOk(cached, { 'X-Cache': 'HIT' });
-  }
+  if (cached !== null) return jsonOk(cached, { 'X-Cache': 'HIT' });
 
   try {
     const data = await fetcher();
@@ -100,7 +86,7 @@ async function serveCached(env, key, fetcher) {
     return jsonOk(data, { 'X-Cache': 'MISS' });
   } catch (err) {
     console.error(`Error fetching ${key}:`, err.message);
-    return jsonOk({ error: err.message }, {}, 500);
+    return jsonOk([], {}, 500);
   }
 }
 
@@ -112,12 +98,7 @@ async function refreshKey(env, key, fetcher) {
 function jsonOk(data, extra = {}, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      ...CORS_HEADERS,
-      'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=60',
-      ...extra,
-    },
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', ...extra },
   });
 }
 
@@ -128,50 +109,109 @@ async function fetchPokemonSets() {
   const res = await fetch(`${TCG_API}?orderBy=-releaseDate&pageSize=60`, {
     headers: { 'User-Agent': 'CardTrackerBot/1.0' },
   });
-  if (!res.ok) throw new Error(`TCG API responded with ${res.status}`);
+  if (!res.ok) throw new Error(`TCG API ${res.status}`);
   const { data } = await res.json();
   return data || [];
 }
 
 // ─────────────────────────────────────────────
-//  NEWS FEEDS
+//  REDDIT OAUTH  (app-only, no user login needed)
 // ─────────────────────────────────────────────
-async function fetchAllNews(category) {
-  const sources = NEWS_SOURCES[category] || [];
+async function getRedditToken(env) {
+  if (!env.REDDIT_CLIENT_ID || !env.REDDIT_CLIENT_SECRET) return null;
 
-  const results = await Promise.allSettled(
-    sources.map(({ url, label }) => fetchAndParseFeed(url, label))
-  );
+  // Reuse cached token if still valid
+  const cached = await env.CACHE.get('reddit-token', 'json');
+  if (cached && cached.expires > Date.now()) return cached.token;
+
+  const creds = btoa(`${env.REDDIT_CLIENT_ID}:${env.REDDIT_CLIENT_SECRET}`);
+  const res   = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${creds}`,
+      'User-Agent':    'CardTrackerBot/1.0 by CardTrackerApp',
+      'Content-Type':  'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+
+  if (!res.ok) throw new Error(`Reddit token request failed: ${res.status}`);
+  const { access_token, expires_in } = await res.json();
+
+  await env.CACHE.put('reddit-token', JSON.stringify({
+    token:   access_token,
+    expires: Date.now() + (expires_in - 300) * 1000, // 5min buffer
+  }), { expirationTtl: expires_in });
+
+  return access_token;
+}
+
+async function fetchRedditPosts(env, subreddit) {
+  const token = await getRedditToken(env);
+  if (!token) return [];
+
+  const res = await fetch(`https://oauth.reddit.com/r/${subreddit}/new.json?limit=15`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'User-Agent':    'CardTrackerBot/1.0 by CardTrackerApp',
+    },
+  });
+  if (!res.ok) throw new Error(`Reddit /r/${subreddit} ${res.status}`);
+
+  const json = await res.json();
+  return (json.data?.children || [])
+    .filter(c => !c.data.stickied)
+    .map(({ data: d }) => ({
+      title:       d.title,
+      link:        `https://www.reddit.com${d.permalink}`,
+      pubDate:     new Date(d.created_utc * 1000).toISOString(),
+      description: truncate(d.selftext || '', 200),
+      _source:     `r/${subreddit}`,
+    }));
+}
+
+// ─────────────────────────────────────────────
+//  NEWS AGGREGATOR
+// ─────────────────────────────────────────────
+async function fetchAllNews(env, category) {
+  const rssSources    = RSS_SOURCES[category]    || [];
+  const redditSubs    = REDDIT_SUBS[category]    || [];
+
+  const [rssResults, redditResults] = await Promise.all([
+    Promise.allSettled(rssSources.map(({ url, label }) => fetchAndParseFeed(url, label))),
+    Promise.allSettled(redditSubs.map(sub => fetchRedditPosts(env, sub))),
+  ]);
 
   const seen  = new Set();
   const items = [];
 
-  results.forEach(r => {
-    if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-      r.value.forEach(item => {
-        if (item.title && !seen.has(item.title)) {
-          seen.add(item.title);
-          items.push(item);
-        }
-      });
+  const add = arr => arr.forEach(item => {
+    if (item.title && !seen.has(item.title)) {
+      seen.add(item.title);
+      items.push(item);
     }
   });
+
+  rssResults.forEach(r => r.status === 'fulfilled' && add(r.value));
+  redditResults.forEach(r => r.status === 'fulfilled' && add(r.value));
 
   return items
     .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate))
     .slice(0, 20);
 }
 
+// ─────────────────────────────────────────────
+//  RSS FETCHER + PARSER
+// ─────────────────────────────────────────────
 async function fetchAndParseFeed(url, label) {
   const controller = new AbortController();
   const timeout    = setTimeout(() => controller.abort(), 8000);
-
   try {
     const res = await fetch(url, {
-      signal: controller.signal,
+      signal:  controller.signal,
       headers: { 'User-Agent': 'CardTrackerBot/1.0' },
     });
-    if (!res.ok) throw new Error(`Feed returned ${res.status}`);
+    if (!res.ok) throw new Error(`Feed ${res.status}`);
     const text = await res.text();
     return parseFeed(text, label);
   } finally {
@@ -179,16 +219,9 @@ async function fetchAndParseFeed(url, label) {
   }
 }
 
-// ─────────────────────────────────────────────
-//  FEED PARSER  (RSS 2.0 + Atom — no DOMParser in Workers)
-// ─────────────────────────────────────────────
 function parseFeed(xml, label) {
-  // Detect format by presence of <entry> vs <item>
-  const hasEntries = /<entry[\s>]/i.test(xml);
-  const hasItems   = /<item[\s>]/i.test(xml);
-
-  if (hasEntries) return parseAtom(xml, label);
-  if (hasItems)   return parseRSS(xml, label);
+  if (/<entry[\s>]/i.test(xml)) return parseAtom(xml, label);
+  if (/<item[\s>]/i.test(xml))  return parseRSS(xml, label);
   return [];
 }
 
@@ -212,7 +245,6 @@ function parseAtom(xml, label) {
   })).filter(i => i.title && i.link);
 }
 
-// Pull all <tag>...</tag> top-level blocks out of xml string
 function extractBlocks(xml, tag) {
   const blocks = [];
   const open   = new RegExp(`<${tag}[\\s>]`, 'gi');
@@ -228,40 +260,61 @@ function extractBlocks(xml, tag) {
   return blocks;
 }
 
-// Extract inner text of first matching tag (handles CDATA)
 function extractText(block, tag) {
-  const cdata = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]>`, 'i');
-  const plain = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
-  const cm = block.match(cdata);
+  const cm = block.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]>`, 'i'));
   if (cm) return cm[1].trim();
-  const pm = block.match(plain);
+  const pm = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
   return pm ? pm[1].trim() : '';
 }
 
-// Extract an attribute value from the first matching tag
 function extractAttr(block, tag, attr) {
-  const re    = new RegExp(`<${tag}[^>]*\\s${attr}=["']([^"']*)["']`, 'i');
-  const match = block.match(re);
+  const match = block.match(new RegExp(`<${tag}[^>]*\\s${attr}=["']([^"']*)["']`, 'i'));
   return match ? match[1].trim() : '';
 }
 
 function stripHtml(s) {
-  return (s || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function decodeEntities(s) {
   return (s || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g,  '<')
-    .replace(/&gt;/g,  '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g,  "'")
-    .replace(/&apos;/g, "'");
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'");
 }
 
 function truncate(s, n) {
   return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+// ─────────────────────────────────────────────
+//  DEBUG ENDPOINT
+// ─────────────────────────────────────────────
+async function debugFeeds(env) {
+  const allRss = [...RSS_SOURCES.pokemon, ...RSS_SOURCES.sports];
+  const rssTests = await Promise.all(allRss.map(async ({ url, label }) => {
+    try {
+      const r    = await fetch(url, { headers: { 'User-Agent': 'CardTrackerBot/1.0' } });
+      const text = await r.text();
+      return { label, status: r.status, bytes: text.length, preview: text.slice(0, 150) };
+    } catch (e) {
+      return { label, status: 'error', error: e.message };
+    }
+  }));
+
+  const redditOk = !!(env.REDDIT_CLIENT_ID && env.REDDIT_CLIENT_SECRET);
+  let redditTest = { configured: redditOk };
+  if (redditOk) {
+    try {
+      const token = await getRedditToken(env);
+      redditTest.token = token ? 'obtained' : 'failed';
+      if (token) {
+        const posts = await fetchRedditPosts(env, 'PokemonTCG');
+        redditTest.pokemonTCG_posts = posts.length;
+      }
+    } catch (e) {
+      redditTest.error = e.message;
+    }
+  }
+
+  return jsonOk({ rss: rssTests, reddit: redditTest });
 }
