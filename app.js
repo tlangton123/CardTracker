@@ -1,7 +1,7 @@
 'use strict';
 
 // ── After deploying your Cloudflare Worker, replace this URL ──
-const WORKER_URL = 'https://card-tracker-api.YOURSUBDOMAIN.workers.dev';
+const WORKER_URL = 'https://card-tracker-api.tlangton123.workers.dev';
 
 let countdownTimers = {};
 

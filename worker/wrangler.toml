@@ -10,4 +10,4 @@ crons = ["*/15 * * * *"]
 # After running `wrangler kv namespace create CACHE`, paste the id below.
 [[kv_namespaces]]
 binding = "CACHE"
-id      = "REPLACE_WITH_YOUR_KV_ID"
+id      = "ba3eb4a15d3c4baab4a8014b42117353"
