@@ -8,15 +8,16 @@ const CACHE_TTL = 900; // 15 minutes
 
 const NEWS_SOURCES = {
   pokemon: [
-    { url: 'https://www.reddit.com/r/PokemonTCG/new/.rss',       label: 'r/PokemonTCG'        },
-    { url: 'https://www.reddit.com/r/pokemoncardmarket/new/.rss', label: 'r/pokemoncardmarket' },
-    { url: 'https://www.pokebeach.com/feed',                      label: 'PokeBeach'           },
+    { url: 'https://www.pokeguardian.com/feed/',                             label: 'PokéGuardian'        },
+    { url: 'https://www.ptcgradio.com/feed/',                                label: 'PTCG Radio'          },
+    { url: 'https://tcgplayer-content.tcgplayer.com/feed/blog',              label: 'TCGPlayer Blog'      },
+    { url: 'https://limitlesstcg.com/news/feed/',                            label: 'Limitless TCG'       },
   ],
   sports: [
-    { url: 'https://www.reddit.com/r/sportscards/new/.rss',       label: 'r/sportscards'       },
-    { url: 'https://www.reddit.com/r/baseballcards/new/.rss',     label: 'r/baseballcards'     },
-    { url: 'https://www.reddit.com/r/basketballcards/new/.rss',   label: 'r/basketballcards'   },
-    { url: 'https://www.cardboardconnection.com/feed',            label: 'Cardboard Connection' },
+    { url: 'https://www.cardboardconnection.com/feed',                       label: 'Cardboard Connection' },
+    { url: 'https://www.sportscollectorsdaily.com/feed/',                    label: 'Sports Collectors Daily' },
+    { url: 'https://www.beckett.com/news/feed/',                             label: 'Beckett'             },
+    { url: 'https://blowoutcards.com/forums/external.php?type=RSS2',        label: 'Blowout Forums'      },
   ],
 };
 

@@ -237,16 +237,5 @@ const SPORTS_CURATED_DROPS = [
 //  NEWS SOURCES  — Reddit RSS feeds + hobby news
 //  Reddit .rss endpoints use Atom format (parsed automatically)
 // ─────────────────────────────────────────────
-const NEWS_SOURCES = {
-  pokemon: [
-    { url: 'https://www.reddit.com/r/PokemonTCG/new/.rss',        label: 'r/PokemonTCG'        },
-    { url: 'https://www.reddit.com/r/pokemoncardmarket/new/.rss',  label: 'r/pokemoncardmarket' },
-    { url: 'https://www.pokebeach.com/feed',                       label: 'PokeBeach'           },
-  ],
-  sports: [
-    { url: 'https://www.reddit.com/r/sportscards/new/.rss',        label: 'r/sportscards'       },
-    { url: 'https://www.reddit.com/r/baseballcards/new/.rss',      label: 'r/baseballcards'     },
-    { url: 'https://www.reddit.com/r/basketballcards/new/.rss',    label: 'r/basketballcards'   },
-    { url: 'https://www.cardboardconnection.com/feed',             label: 'Cardboard Connection' },
-  ],
-};
+// NEWS_SOURCES is now managed in the Cloudflare Worker (worker/src/index.js).
+// The Worker fetches and caches feeds server-side; the frontend calls /api/news/*.
