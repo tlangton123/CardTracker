@@ -6,16 +6,12 @@
 const TCG_API  = 'https://api.pokemontcg.io/v2/sets';
 const CACHE_TTL = 900; // 15 minutes
 
-// Reddit subreddits — fetched via public JSON API (no OAuth needed)
-const REDDIT_SUBS = {
-  pokemon: ['PokemonTCG', 'pokemoncardmarket'],
-  sports:  ['sportscards', 'baseballcards', 'basketballcards'],
-};
-
-// RSS feeds confirmed to return valid XML from Cloudflare IPs
+// RSS feeds — only sources confirmed or likely to serve XML from Cloudflare IPs
 const RSS_SOURCES = {
   pokemon: [
-    { url: 'https://www.pokeguardian.com/feed/',          label: 'PokéGuardian'          },
+    { url: 'https://dotesports.com/pokemon/feed/',        label: 'Dot Esports'           },
+    { url: 'https://www.nintendolife.com/feeds/latest',   label: 'Nintendo Life'         },
+    { url: 'https://sixprizes.com/feed/',                 label: 'Six Prizes'            },
   ],
   sports: [
     { url: 'https://www.cardboardconnection.com/feed',    label: 'Cardboard Connection'  },
@@ -24,9 +20,7 @@ const RSS_SOURCES = {
   ],
 };
 
-// Browser-like UA for sites that block generic bot strings
-const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const BOT_UA     = 'CardTrackerBot/1.0 (https://tlangton123.github.io/CardTracker)';
+const BOT_UA = 'CardTrackerBot/1.0 (https://tlangton123.github.io/CardTracker)';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -120,51 +114,29 @@ async function fetchPokemonSets() {
   return data || [];
 }
 
-// ─────────────────────────────────────────────
-//  REDDIT  (public JSON API — no OAuth required)
-// ─────────────────────────────────────────────
-async function fetchRedditPosts(env, subreddit) {
-  const res = await fetch(
-    `https://www.reddit.com/r/${subreddit}/new.json?limit=15&raw_json=1`,
-    { headers: { 'User-Agent': BOT_UA } }
-  );
-  if (!res.ok) throw new Error(`Reddit /r/${subreddit} ${res.status}`);
-  const json = await res.json();
-  return (json.data?.children || [])
-    .filter(c => !c.data.stickied)
-    .map(({ data: d }) => ({
-      title:       d.title,
-      link:        `https://www.reddit.com${d.permalink}`,
-      pubDate:     new Date(d.created_utc * 1000).toISOString(),
-      description: truncate(d.selftext || '', 200),
-      _source:     `r/${subreddit}`,
-    }));
-}
 
 // ─────────────────────────────────────────────
 //  NEWS AGGREGATOR
 // ─────────────────────────────────────────────
 async function fetchAllNews(env, category) {
-  const rssSources    = RSS_SOURCES[category]    || [];
-  const redditSubs    = REDDIT_SUBS[category]    || [];
-
-  const [rssResults, redditResults] = await Promise.all([
-    Promise.allSettled(rssSources.map(({ url, label }) => fetchAndParseFeed(url, label))),
-    Promise.allSettled(redditSubs.map(sub => fetchRedditPosts(env, sub))),
-  ]);
+  const sources = RSS_SOURCES[category] || [];
+  const results = await Promise.allSettled(
+    sources.map(({ url, label }) => fetchAndParseFeed(url, label))
+  );
 
   const seen  = new Set();
   const items = [];
 
-  const add = arr => arr.forEach(item => {
-    if (item.title && !seen.has(item.title)) {
-      seen.add(item.title);
-      items.push(item);
+  results.forEach(r => {
+    if (r.status === 'fulfilled') {
+      r.value.forEach(item => {
+        if (item.title && !seen.has(item.title)) {
+          seen.add(item.title);
+          items.push(item);
+        }
+      });
     }
   });
-
-  rssResults.forEach(r => r.status === 'fulfilled' && add(r.value));
-  redditResults.forEach(r => r.status === 'fulfilled' && add(r.value));
 
   return items
     .sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate))
@@ -177,8 +149,7 @@ async function fetchAllNews(env, category) {
 async function fetchAndParseFeed(url, label) {
   const controller = new AbortController();
   const timeout    = setTimeout(() => controller.abort(), 8000);
-  // Some sites (e.g. PokéGuardian) require a browser-like UA to serve RSS
-  const ua = url.includes('pokeguardian') ? BROWSER_UA : BOT_UA;
+  const ua = BOT_UA;
   try {
     const res = await fetch(url, {
       signal:  controller.signal,
@@ -265,11 +236,10 @@ function truncate(s, n) {
 //  DEBUG ENDPOINT
 // ─────────────────────────────────────────────
 async function debugFeeds(env) {
-  const allRss = [...RSS_SOURCES.pokemon, ...RSS_SOURCES.sports];
+  const allRss   = [...RSS_SOURCES.pokemon, ...RSS_SOURCES.sports];
   const rssTests = await Promise.all(allRss.map(async ({ url, label }) => {
     try {
-      const ua   = url.includes('pokeguardian') ? BROWSER_UA : BOT_UA;
-      const r    = await fetch(url, { headers: { 'User-Agent': ua } });
+      const r    = await fetch(url, { headers: { 'User-Agent': BOT_UA } });
       const text = await r.text();
       const isXml = !text.trimStart().startsWith('<!');
       return { label, status: r.status, bytes: text.length, xml: isXml, preview: text.slice(0, 150) };
@@ -277,17 +247,5 @@ async function debugFeeds(env) {
       return { label, status: 'error', error: e.message };
     }
   }));
-
-  const redditTests = await Promise.all(
-    ['PokemonTCG', 'sportscards'].map(async sub => {
-      try {
-        const posts = await fetchRedditPosts(env, sub);
-        return { sub, posts: posts.length, sample: posts[0]?.title || null };
-      } catch (e) {
-        return { sub, error: e.message };
-      }
-    })
-  );
-
-  return jsonOk({ rss: rssTests, reddit: redditTests });
+  return jsonOk({ rss: rssTests });
 }
