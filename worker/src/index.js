@@ -9,7 +9,10 @@ const CACHE_TTL = 900; // 15 minutes
 // RSS feeds — only sources confirmed or likely to serve XML from Cloudflare IPs
 const RSS_SOURCES = {
   pokemon: [
-    { url: 'https://sixprizes.com/feed/',                 label: 'Six Prizes'            },
+    { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCFctpiB_Hnlk3ejWfHqSm6Q', label: 'Pokémon Official' },
+    { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCnwlWgbcxwpsnB7LtOL1kPg', label: 'PTCGRadio'        },
+    { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCBHD6Yg8R1yS9akfGm4mecQ', label: 'Leonhart'         },
+    { url: 'https://sixprizes.com/feed/',                                                   label: 'Six Prizes'       },
   ],
   sports: [
     { url: 'https://www.cardboardconnection.com/feed',    label: 'Cardboard Connection'  },

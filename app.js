@@ -245,17 +245,19 @@ async function loadNewsFeeds(containerId, endpoint) {
 }
 
 function buildNewsCard(item) {
-  const pubDate = item.pubDate ? new Date(item.pubDate) : null;
-  const domain  = tryDomain(item.link);
-  const desc    = (item.description || '').slice(0, 130).trim();
+  const pubDate   = item.pubDate ? new Date(item.pubDate) : null;
+  const domain    = tryDomain(item.link);
+  const desc      = (item.description || '').slice(0, 130).trim();
+  const isYouTube = item.link && item.link.includes('youtube.com');
+  const label     = isYouTube ? `▶ ${esc(item._source || domain)}` : esc(item._source || domain);
 
   const div = document.createElement('div');
-  div.className = 'news-card';
+  div.className = `news-card ${isYouTube ? 'news-card--video' : ''}`;
   div.innerHTML = `
     <a href="${item.link}" target="_blank" rel="noopener" class="news-card__title">${esc(item.title || 'Untitled')}</a>
-    ${desc ? `<div class="news-card__desc">${esc(desc)}…</div>` : ''}
+    ${desc && !isYouTube ? `<div class="news-card__desc">${esc(desc)}…</div>` : ''}
     <div class="news-card__meta">
-      <span class="news-source">${esc(item._source || domain)}</span>
+      <span class="news-source">${label}</span>
       ${pubDate && !isNaN(pubDate) ? `<span class="news-date">${relDate(pubDate)}</span>` : ''}
     </div>`;
   return div;
