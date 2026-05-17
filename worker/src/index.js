@@ -9,8 +9,6 @@ const CACHE_TTL = 900; // 15 minutes
 // RSS feeds — only sources confirmed or likely to serve XML from Cloudflare IPs
 const RSS_SOURCES = {
   pokemon: [
-    { url: 'https://dotesports.com/pokemon/feed/',        label: 'Dot Esports'           },
-    { url: 'https://www.nintendolife.com/feeds/latest',   label: 'Nintendo Life'         },
     { url: 'https://sixprizes.com/feed/',                 label: 'Six Prizes'            },
   ],
   sports: [
@@ -156,7 +154,20 @@ async function fetchAndParseFeed(url, label) {
       headers: { 'User-Agent': ua },
     });
     if (!res.ok) throw new Error(`Feed ${res.status}`);
-    const text = await res.text();
+    // Read at most 300 KB to avoid huge feeds stalling the Worker
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || total > 300_000) break;
+      chunks.push(value);
+      total += value.length;
+    }
+    reader.cancel();
+    const text = new TextDecoder().decode(
+      chunks.reduce((a, b) => { const c = new Uint8Array(a.length + b.length); c.set(a); c.set(b, a.length); return c; }, new Uint8Array(0))
+    );
     // If response looks like HTML rather than XML, bail out
     if (text.trimStart().startsWith('<!')) throw new Error('Feed returned HTML, not XML');
     return parseFeed(text, label);
